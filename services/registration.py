@@ -336,11 +336,18 @@ async def verify_2fa(req: Verify2FARequest):
         "credentials_retrieved": True,
     })
 
+    # Fetch tenant credentials to return to the agent
+    yacht = await _get_yacht(req.yacht_id)
+    tenant_url = yacht.get("tenant_supabase_url", "") if yacht else ""
+    tenant_key = yacht.get("tenant_supabase_service_key", "") if yacht else ""
+
     logger.info("Yacht %s activated via 2FA", req.yacht_id)
 
     return {
         "success": True,
         "shared_secret": shared_secret,
+        "supabase_url": tenant_url,
+        "supabase_service_key": tenant_key,
     }
 
 
@@ -410,8 +417,21 @@ async def verify_download_code(req: VerifyDownloadCodeRequest):
             logger.error("Failed to create download link: %d %s", resp.status_code, resp.text)
             raise HTTPException(500, {"success": False, "error": "Failed to generate download link"})
 
-    # Build download URL — uses the existing Supabase Edge Function
-    download_url = f"{MASTER_SUPABASE_URL}/functions/v1/download?token={download_token}"
+    # Generate a signed Storage URL (1 hour expiry) — browser can download directly
+    async with httpx.AsyncClient() as client:
+        sign_resp = await client.post(
+            f"{MASTER_SUPABASE_URL}/storage/v1/object/sign/installers/{dmg_path}",
+            json={"expiresIn": 3600},
+            headers=_sb_headers(),
+            timeout=15,
+        )
+        if sign_resp.status_code == 200:
+            signed_path = sign_resp.json().get("signedURL", "")
+            download_url = f"{MASTER_SUPABASE_URL}/storage/v1{signed_path}"
+        else:
+            logger.error("Failed to sign URL: %d %s", sign_resp.status_code, sign_resp.text)
+            # Fallback to Edge Function
+            download_url = f"{MASTER_SUPABASE_URL}/functions/v1/download?token={download_token}"
 
     yacht_name = yacht.get("yacht_name", yacht["yacht_id"])
 
@@ -435,7 +455,10 @@ if PORTAL_DIR.is_dir():
     async def portal_home():
         download_page = PORTAL_DIR / "download.html"
         if download_page.exists():
-            return HTMLResponse(download_page.read_text())
+            return HTMLResponse(
+                download_page.read_text(),
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
         # Fall back to status page
         index_page = PORTAL_DIR / "index.html"
         if index_page.exists():
