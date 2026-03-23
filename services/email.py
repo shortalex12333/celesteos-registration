@@ -94,10 +94,7 @@ class GraphEmailService:
         Returns True on success. In debug mode, logs the email and returns True.
         """
         if self.debug_mode:
-            logger.info(
-                "DEBUG EMAIL — to: %s | subject: %s\n%s",
-                to, subject, html_body,
-            )
+            logger.info("DEBUG EMAIL — to: %s | subject: %s", to, subject)
             return True
 
         token = self._ensure_token()
@@ -131,12 +128,24 @@ class GraphEmailService:
     # ------------------------------------------------------------------
     def send_2fa_code(self, to: str, code: str, yacht_name: str) -> bool:
         """Send a branded 2FA verification email."""
+        if self.debug_mode:
+            print(f"\n{'='*50}")
+            print(f"  2FA CODE for {yacht_name}")
+            print(f"  To: {to}")
+            print(f"  Code: {code}")
+            print(f"{'='*50}\n", flush=True)
         subject = f"CelesteOS — Your verification code"
         html = _render_2fa_template(code, yacht_name)
         return self.send_email(to, subject, html)
 
     def send_download_code(self, to: str, code: str, yacht_name: str) -> bool:
         """Send a download verification code."""
+        if self.debug_mode:
+            print(f"\n{'='*50}")
+            print(f"  DOWNLOAD CODE for {yacht_name}")
+            print(f"  To: {to}")
+            print(f"  Code: {code}")
+            print(f"{'='*50}\n", flush=True)
         subject = f"CelesteOS — Download verification code"
         html = _render_download_code_template(code, yacht_name)
         return self.send_email(to, subject, html)

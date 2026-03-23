@@ -9,7 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY services/ services/
 COPY portal/ portal/
-COPY lib/ lib/
 
 EXPOSE 8001
 
