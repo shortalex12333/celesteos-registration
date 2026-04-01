@@ -406,6 +406,7 @@ async def verify_download_code(req: VerifyDownloadCodeRequest):
                 "token_hash": token_hash,
                 "twofa_code": twofa_code,
                 "package_path": dmg_path,
+                "platform": yacht.get("installer_type", "dmg"),
                 "is_activation_link": False,
                 "expires_at": expires,
                 "download_count": 0,
