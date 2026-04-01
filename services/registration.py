@@ -445,6 +445,60 @@ async def verify_download_code(req: VerifyDownloadCodeRequest):
 
 
 # ---------------------------------------------------------------------------
+# Welcome email (admin-triggered)
+# ---------------------------------------------------------------------------
+
+PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", "https://registration.celeste7.ai")
+
+
+class SendWelcomeRequest(BaseModel):
+    yacht_id: str
+    admin_key: Optional[str] = None  # simple guard — not a full auth system
+
+
+ADMIN_KEY = os.getenv("ADMIN_API_KEY", "")
+
+
+@app.post("/api/send-welcome")
+async def send_welcome(req: SendWelcomeRequest, request: Request):
+    """Send the welcome email with download portal link to the buyer."""
+    # Simple admin guard
+    if ADMIN_KEY and req.admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    # Look up yacht
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            _sb_url(f"fleet_registry?yacht_id=eq.{req.yacht_id}&select=yacht_name,buyer_email,active"),
+            headers=_sb_headers(),
+        )
+    if resp.status_code != 200 or not resp.json():
+        raise HTTPException(status_code=404, detail="Yacht not found")
+
+    yacht = resp.json()[0]
+    if not yacht.get("active"):
+        raise HTTPException(status_code=400, detail="Yacht is not active")
+    if not yacht.get("buyer_email"):
+        raise HTTPException(status_code=400, detail="No buyer email on record")
+
+    buyer_email = yacht["buyer_email"]
+    yacht_name = yacht["yacht_name"]
+
+    # Build portal URL with pre-filled email
+    import urllib.parse
+    portal_url = f"{PORTAL_BASE_URL}?email={urllib.parse.quote(buyer_email)}"
+
+    email_svc = _get_email()
+    sent = email_svc.send_welcome_email(buyer_email, yacht_name, portal_url)
+
+    if not sent:
+        raise HTTPException(status_code=500, detail="Failed to send welcome email")
+
+    logger.info("Welcome email sent for %s to %s", req.yacht_id, _mask_email(buyer_email))
+    return {"success": True, "sent_to": _mask_email(buyer_email)}
+
+
+# ---------------------------------------------------------------------------
 # Serve download portal as static page
 # ---------------------------------------------------------------------------
 
